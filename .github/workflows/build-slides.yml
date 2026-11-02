@@ -1,0 +1,222 @@
+name: build-slides
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Adding a new deck = create <day>.<section>-<topic>/main.tex and push.
+# The `discover` job finds every such file and feeds the build matrix.
+# The slug (PDF filename) is the folder name, e.g. 3.2-jailbreaking.
+
+# Pages deploy needs `pages: write` + `id-token: write`; `contents: read`
+# is enough for everything else.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Pages allows at most one concurrent deploy. `cancel-in-progress: false`
+# lets an in-flight deploy finish rather than getting yanked by the next push.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+      empty: ${{ steps.gen.outputs.empty }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gen
+        shell: bash
+        run: |
+          set -euo pipefail
+          decks=()
+          while IFS= read -r tex; do
+              dir=$(dirname "$tex")
+              slug=$(basename "$dir")
+              # <day>.<section>-<topic>, e.g. 1.4-prompt-injection
+              if [[ ! "$slug" =~ ^[0-9]+\.[0-9]+-[a-z0-9-]+$ ]]; then
+                  echo "::warning::Skipping $tex (folder '$slug' doesn't match <day>.<section>-<topic>)"
+                  continue
+              fi
+              echo "found: $slug  ->  $slug.pdf"
+              decks+=("{\"deck\":\"$slug\",\"slug\":\"$slug\"}")
+          done < <(find . -mindepth 2 -maxdepth 2 -path './[0-9]*/main.tex' | sort -V)
+
+          if [ ${#decks[@]} -eq 0 ]; then
+              echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
+              echo "empty=true" >> "$GITHUB_OUTPUT"
+          else
+              matrix=$(printf '%s\n' "${decks[@]}" | jq -s '{include: .}' -c)
+              echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+              echo "empty=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: discover
+    if: needs.discover.outputs.empty == 'false'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Each deck is built twice: once in presentation mode (with \pause
+      # reveals) and once in handout mode (collapsed). aisb_beamer.sty
+      # reads \HANDOUT; latexmk's -usepretex injects that def before main.tex
+      # runs, overriding whatever the deck file says.
+
+      - name: Build presentation mode (\pause reveals on)
+        uses: xu-cheng/latex-action@v3
+        with:
+          working_directory: ${{ matrix.deck }}
+          root_file: main.tex
+          args: '-pdf -file-line-error -halt-on-error -interaction=nonstopmode -usepretex=\def\HANDOUT{0}'
+
+      - name: Stash presentation PDF
+        run: mv "${{ matrix.deck }}/main.pdf" "${{ matrix.deck }}/${{ matrix.slug }}-present.pdf"
+
+      - name: Clean intermediate build files
+        run: |
+          cd "${{ matrix.deck }}"
+          rm -f main.aux main.log main.nav main.out main.snm main.toc main.vrb main.fls main.fdb_latexmk
+
+      - name: Build handout mode (\pause reveals collapsed)
+        uses: xu-cheng/latex-action@v3
+        with:
+          working_directory: ${{ matrix.deck }}
+          root_file: main.tex
+          args: '-pdf -file-line-error -halt-on-error -interaction=nonstopmode -usepretex=\def\HANDOUT{1}'
+
+      - name: Rename handout PDF
+        run: mv "${{ matrix.deck }}/main.pdf" "${{ matrix.deck }}/${{ matrix.slug }}.pdf"
+
+      - name: Upload PDF artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.slug }}
+          path: |
+            ${{ matrix.deck }}/${{ matrix.slug }}.pdf
+            ${{ matrix.deck }}/${{ matrix.slug }}-present.pdf
+
+  deploy:
+    # Every push to main rebuilds and replaces the live Pages site at
+    # https://ai-security-bootcamp.github.io/aisb-slides/. PRs build but
+    # don't deploy. No PDFs are committed to the repo.
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all PDFs
+        uses: actions/download-artifact@v4
+        with:
+          path: pdfs/
+
+      - name: Flatten PDF paths into public/
+        run: |
+          mkdir -p public
+          find pdfs/ -name '*.pdf' -exec cp {} public/ \;
+          ls -la public/
+
+      - name: Generate public/index.html (day-grouped)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-7)
+          REPO="${{ github.repository }}"
+          current_day=""
+          {
+            cat <<'HEAD'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>AISB Slide Decks</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+                   max-width: 760px; margin: 2.5rem auto; padding: 0 1.2rem;
+                   color: #222; line-height: 1.55; }
+            h1 { font-size: 1.6rem; border-bottom: 1px solid #eaecef; padding-bottom: .3rem; }
+            h2 { font-size: 1.15rem; margin-top: 1.8rem; color: #24292e; }
+            ul { list-style: none; padding-left: 0; }
+            li { padding: .3rem 0; }
+            a { color: #0366d6; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            .num { color: #6a737d; font-variant-numeric: tabular-nums; margin-right: .35rem; font-weight: 600; }
+            .sep { color: #d1d5da; margin: 0 .35rem; }
+            .meta { color: #6a737d; font-size: .88rem; margin-top: 2.5rem;
+                    border-top: 1px solid #eaecef; padding-top: .8rem; }
+            code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                   background: #f6f8fa; padding: .1rem .3rem; border-radius: 3px; font-size: .9em; }
+          </style>
+          </head>
+          <body>
+          <h1>AI Security Bootcamp — Slide Decks</h1>
+          HEAD
+            while IFS= read -r tex; do
+                slug=$(basename "$(dirname "$tex")")
+                [[ "$slug" =~ ^([0-9]+)\.([0-9]+)-([a-z0-9-]+)$ ]] || continue
+                day="${BASH_REMATCH[1]}"
+                num="${day}.${BASH_REMATCH[2]}"
+                topic="${BASH_REMATCH[3]}"
+
+                # Day display names, matching the aisb repo README. Add a row
+                # if a new day lands; unknown days fall back to "Day N".
+                case "$day" in
+                    0) day_pretty="Setup &amp; Examples" ;;
+                    1) day_pretty="LLM Internals" ;;
+                    2) day_pretty="Coding Agents &amp; AI Control" ;;
+                    3) day_pretty="LLM Inference Security" ;;
+                    4) day_pretty="Training &amp; Data Security" ;;
+                    5) day_pretty="Adversarial ML" ;;
+                    6) day_pretty="Infrastructure Security" ;;
+                    7) day_pretty="Infrastructure Security &amp; Threat Modeling" ;;
+                    *) day_pretty="" ;;
+                esac
+
+                # Talk title from main.tex's `{{[X.Y] Title}}` line; fall
+                # back to the topic if extraction fails.
+                title_line=$(grep -m1 '^{{\[' "$tex" || true)
+                talk_title=$(echo "$title_line" | sed -E 's/^\{\{\[[^]]+\] (.*)\}\}$/\1/')
+                if [[ -z "$talk_title" || "$talk_title" == "$title_line" ]]; then
+                    talk_title=$(echo "$topic" | tr '-' ' ')
+                fi
+
+                day_heading="Day ${day}${day_pretty:+ — ${day_pretty}}"
+                if [[ "$day_heading" != "$current_day" ]]; then
+                    [[ -n "$current_day" ]] && echo "</ul>"
+                    echo "<h2>${day_heading}</h2>"
+                    echo "<ul>"
+                    current_day="$day_heading"
+                fi
+                echo "<li><span class=\"num\">${num}</span>${talk_title}<span class=\"sep\">·</span><a href=\"./${slug}.pdf\">📄 Handout</a><span class=\"sep\">·</span><a href=\"./${slug}-present.pdf\">🎬 Present</a></li>"
+            done < <(find . -mindepth 2 -maxdepth 2 -path './[0-9]*/main.tex' | sort -V)
+            [[ -n "$current_day" ]] && echo "</ul>"
+            echo "<p class=\"meta\">Built from commit <code>${SHA_SHORT}</code> · source: <a href=\"https://github.com/${REPO}\">github.com/${REPO}</a></p>"
+            echo "</body></html>"
+          } > public/index.html
+          echo "----- public/index.html -----"
+          cat public/index.html
+          echo "----- end -----"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
