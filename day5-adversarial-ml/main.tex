@@ -1,0 +1,174 @@
+% =====================================================================
+% AI Security Bootcamp, Day 5: Adversarial ML
+%
+% Master file. Preamble, title page and shared macros only; content lives
+% in the per-section files \input at the bottom:
+%
+%   5.1-adversarial-vision.tex    5.1 Adversarial examples against vision models
+%   5.2-adversarial-language.tex  5.2 Discrete adversarial optimisation (GCG)
+%   5.3-prefix-tuning.tex         5.3 Continuous adversarial prefixes
+%   5.4-watermarking.tex          5.4 Image provenance and watermark robustness (optional lab)
+%
+% Build:  latexmk -pdf main.tex  (or ../check-builds.sh)
+%
+% Picture-led rewrite of ../rome/main5.tex. Each section opens on a real
+% figure from the original paper (taken from its arXiv source, see img/
+% and the caption on each frame), then gives one key equation.
+% Ground truth for lab details is ../aisb/5.*/section*_solution.py.
+% No model outputs on these slides are invented: every number is either
+% quoted from a cited paper or from the lab source, and says which.
+% =====================================================================
+
+% !TEX root = ./main.tex
+% Build-mode toggle: 1 = handout, 0 = presentation. CI builds both via
+% latexmk -usepretex, so this only affects local builds.
+\providecommand{\HANDOUT}{1}
+\input{../aisb_beamer.sty}
+
+
+% ---------------------------------------------------------------------
+% Bibliography: author-year so an in-text marker stands alone on a slide.
+% ---------------------------------------------------------------------
+\usepackage[backend=biber, style=authoryear, sorting=nyt,
+            maxcitenames=1, maxbibnames=4, giveninits=true,
+            dashed=false, doi=false, isbn=false, url=false]{biblatex}
+\addbibresource{biblo.bib}
+
+\renewcommand*{\nameyeardelim}{\addcomma\space}
+\setbeamertemplate{bibliography item}{}
+\renewcommand*{\bibfont}{\scriptsize}
+
+
+% ---------------------------------------------------------------------
+% Code listing style, matching the Day 4 deck.
+% ---------------------------------------------------------------------
+\definecolor{codegray}{gray}{0.95}
+\definecolor{codekw}{RGB}{0,90,160}
+\definecolor{codestr}{RGB}{150,30,30}
+\definecolor{codecom}{RGB}{100,100,100}
+\lstdefinestyle{aisb}{
+    basicstyle=\ttfamily\scriptsize,
+    keywordstyle=\color{codekw}\bfseries,
+    stringstyle=\color{codestr},
+    commentstyle=\color{codecom}\itshape,
+    backgroundcolor=\color{codegray},
+    breaklines=true,
+    columns=fullflexible,
+    showstringspaces=false,
+    frame=single,
+    framesep=3pt,
+    aboveskip=4pt,
+    belowskip=4pt,
+    escapeinside={(*}{*)},
+}
+\lstset{style=aisb,language=Python}
+
+% ---------------------------------------------------------------------
+% Shared macros
+% ---------------------------------------------------------------------
+\DeclareMathOperator{\sign}{sign}
+\DeclareMathOperator{\clip}{clip}
+\newcommand{\Rl}{\mathbb{R}}
+\newcommand{\Loss}{\mathcal{L}}
+\newcommand{\eps}{\varepsilon}
+
+% 5.1: images and perturbations
+\newcommand{\xx}{\mathbf{x}}                    % image
+\newcommand{\dd}{\boldsymbol{\delta}}           % perturbation
+\newcommand{\tgt}{\mathrm{tgt}}
+
+% 5.2 / 5.3: tokens, embeddings, latent prefix
+\newcommand{\Vocab}{\mathcal{V}}                % vocabulary
+\newcommand{\Emb}{\mathbf{E}}                   % embedding matrix
+\newcommand{\Zpre}{\mathbf{Z}}                  % latent prefix
+\newcommand{\ee}{\mathbf{e}}                    % one-hot vector
+\newcommand{\cat}{\oplus}                       % concatenation
+
+% 5.4: Fourier transform
+\newcommand{\Fou}{\mathcal{F}}                  % 2-D DFT
+
+% Small grey source line under a figure.
+\newcommand{\figsrc}[1]{\par\vspace{1pt}{\tiny\color{gray}#1}}
+
+\begin{document}
+
+\title[AISB Day 5: Adversarial Robustness]
+{Day 5: Adversarial Robustness}
+
+\author[David Quarel]
+{David Quarel}
+
+\institute[AISB]
+{
+  AI Security Bootcamp
+}
+
+\date[\today]
+{\today}
+
+\frame{\titlepage}
+
+% ---------------------------------------------------------------------
+% Framing frame: the whole day is one optimisation with four
+% different feasible sets.
+% ---------------------------------------------------------------------
+\begin{frame}
+\frametitle{Outline for today: Optimization pressure on inputs}
+Freeze the weights of a model, and run gradient
+descent on the \textbf{input} instead against some target.
+\vspace{0.3cm}
+\begin{itemize}
+    \item \textbf{5.1 Pixels.} Learn small perturbations to an image so it 
+    gets classified as something else.
+    \vspace{0.15cm}
+    \item \textbf{5.2 Tokens.} Use gradient descent to guide search for jailbreaking prompts.
+    \vspace{0.15cm}
+    \item \textbf{5.3 Embeddings.} Drop the discreteness and optimise vectors
+    to inject directly into the residual stream.
+    \vspace{0.15cm}
+    \item \textbf{5.4 Spectra} (optional lab). Watermarking of generated images
+    in a way robust to perturbations.
+\end{itemize}
+\end{frame}
+
+% ---------------------------------------------------------------------
+\input{5.1-adversarial-vision.tex}
+\input{5.2-adversarial-language.tex}
+\input{5.3-prefix-tuning.tex}
+\input{5.4-watermarking.tex}
+
+% ---------------------------------------------------------------------
+% \begin{frame}
+% \frametitle{The whole day on one slide}
+% \begin{center}
+% \begin{tabular}{llll}
+% \toprule
+%  & variable & allowed set & method \\
+% \midrule
+% 5.1 & perturbation $\dd$ & small box around $\xx$ & gradient descent \\[2pt]
+% 5.2 & suffix tokens & $\Vocab^{m}$, finite & gradient-ranked search \\[2pt]
+% 5.3 & soft prefix $\Zpre$ & all of $\Rl^{\ell\times d}$ & gradient descent \\[2pt]
+% 5.4 & key in the noise & defender's choice & detect by inversion \\
+% \bottomrule
+% \end{tabular}
+% \end{center}
+% \vspace{0.35cm}
+% \begin{itemize}
+%     \item One objective, different constraints. The difficulty is in the
+%     constraint, not the loss.
+%     \item White-box gradients make these attacks cheap. Transfer is what
+%     makes them reach models the attacker cannot see.
+%     \item A low loss is a fact about the optimisation. Whether it works on a
+%     deployed system is a separate measurement.
+% \end{itemize}
+% \end{frame}
+
+% ---------------------------------------------------------------------
+% References: allowframebreaks so a long list spills onto extra frames.
+% ---------------------------------------------------------------------
+\begin{frame}[allowframebreaks]
+\frametitle{References}
+\printbibliography[heading=none]
+\end{frame}
+
+\end{document}

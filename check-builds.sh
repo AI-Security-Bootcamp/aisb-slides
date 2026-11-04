@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compile every <day>.<section>-<topic>/main.tex with latexmk and report pass/fail.
+# Compile every day<N>-<topic>/main.tex with latexmk and report pass/fail.
 # Builds run in parallel (4 workers). Build artefacts land in a temp dir so
 # the repo stays clean. Mirrors CI's latexmk invocation closely enough to
 # catch the same failures locally before pushing.
@@ -23,10 +23,10 @@ case "${1:-}" in
     *)           echo "usage: $0 [--present]" >&2; exit 2 ;;
 esac
 
-mapfile -t decks < <(find "$repo_root" -mindepth 2 -maxdepth 2 -path "$repo_root/[0-9]*.[0-9]*-*/main.tex" | sort)
+mapfile -t decks < <(find "$repo_root" -mindepth 2 -maxdepth 2 -path "$repo_root/day[0-9]*-*/main.tex" | sort)
 
 if [[ ${#decks[@]} -eq 0 ]]; then
-    echo "no decks found under <day>.<section>-<topic>/main.tex"
+    echo "no decks found under day<N>-<topic>/main.tex"
     exit 0
 fi
 

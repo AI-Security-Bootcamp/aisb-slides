@@ -6,9 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Adding a new deck = create <day>.<section>-<topic>/main.tex and push.
+# Adding a new deck = create day<N>-<topic>/main.tex and push.
 # The `discover` job finds every such file and feeds the build matrix.
-# The slug (PDF filename) is the folder name, e.g. 3.2-jailbreaking.
+# The slug (PDF filename) is the folder name, e.g. day5-adversarial-ml.
 
 # Pages deploy needs `pages: write` + `id-token: write`; `contents: read`
 # is enough for everything else.
@@ -40,14 +40,14 @@ jobs:
           while IFS= read -r tex; do
               dir=$(dirname "$tex")
               slug=$(basename "$dir")
-              # <day>.<section>-<topic>, e.g. 1.4-prompt-injection
-              if [[ ! "$slug" =~ ^[0-9]+\.[0-9]+-[a-z0-9-]+$ ]]; then
-                  echo "::warning::Skipping $tex (folder '$slug' doesn't match <day>.<section>-<topic>)"
+              # day<N>-<topic>, e.g. day5-adversarial-ml
+              if [[ ! "$slug" =~ ^day[0-9]+-[a-z0-9-]+$ ]]; then
+                  echo "::warning::Skipping $tex (folder '$slug' doesn't match day<N>-<topic>)"
                   continue
               fi
               echo "found: $slug  ->  $slug.pdf"
               decks+=("{\"deck\":\"$slug\",\"slug\":\"$slug\"}")
-          done < <(find . -mindepth 2 -maxdepth 2 -path './[0-9]*/main.tex' | sort -V)
+          done < <(find . -mindepth 2 -maxdepth 2 -path './day[0-9]*-*/main.tex' | sort -V)
 
           if [ ${#decks[@]} -eq 0 ]; then
               echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
@@ -66,7 +66,11 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     steps:
+      # lfs: true so images/PDF figures (stored in Git LFS) are real files,
+      # not pointer stubs that \includegraphics can't read.
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
       # Each deck is built twice: once in presentation mode (with \pause
       # reveals) and once in handout mode (collapsed). aisb_beamer.sty
@@ -168,10 +172,9 @@ jobs:
           HEAD
             while IFS= read -r tex; do
                 slug=$(basename "$(dirname "$tex")")
-                [[ "$slug" =~ ^([0-9]+)\.([0-9]+)-([a-z0-9-]+)$ ]] || continue
+                [[ "$slug" =~ ^day([0-9]+)-([a-z0-9-]+)$ ]] || continue
                 day="${BASH_REMATCH[1]}"
-                num="${day}.${BASH_REMATCH[2]}"
-                topic="${BASH_REMATCH[3]}"
+                topic="${BASH_REMATCH[2]}"
 
                 # Day display names, matching the aisb repo README. Add a row
                 # if a new day lands; unknown days fall back to "Day N".
@@ -187,10 +190,11 @@ jobs:
                     *) day_pretty="" ;;
                 esac
 
-                # Talk title from main.tex's `{{[X.Y] Title}}` line; fall
-                # back to the topic if extraction fails.
-                title_line=$(grep -m1 '^{{\[' "$tex" || true)
-                talk_title=$(echo "$title_line" | sed -E 's/^\{\{\[[^]]+\] (.*)\}\}$/\1/')
+                # Talk title from main.tex's `\title[<short title>]` line,
+                # minus any leading "AISB"/"Day N:"; fall back to the topic.
+                title_line=$(grep -m1 '^\\title\[' "$tex" || true)
+                talk_title=$(echo "$title_line" \
+                    | sed -E 's/^\\title\[(.*)\][[:space:]]*$/\1/; s/[{}]//g; s/\\&/\&amp;/g; s/^(AISB )?Day [0-9]+: *//')
                 if [[ -z "$talk_title" || "$talk_title" == "$title_line" ]]; then
                     talk_title=$(echo "$topic" | tr '-' ' ')
                 fi
@@ -202,8 +206,8 @@ jobs:
                     echo "<ul>"
                     current_day="$day_heading"
                 fi
-                echo "<li><span class=\"num\">${num}</span>${talk_title}<span class=\"sep\">·</span><a href=\"./${slug}.pdf\">📄 Handout</a><span class=\"sep\">·</span><a href=\"./${slug}-present.pdf\">🎬 Present</a></li>"
-            done < <(find . -mindepth 2 -maxdepth 2 -path './[0-9]*/main.tex' | sort -V)
+                echo "<li>${talk_title}<span class=\"sep\">·</span><a href=\"./${slug}.pdf\">📄 Handout</a><span class=\"sep\">·</span><a href=\"./${slug}-present.pdf\">🎬 Present</a></li>"
+            done < <(find . -mindepth 2 -maxdepth 2 -path './day[0-9]*-*/main.tex' | sort -V)
             [[ -n "$current_day" ]] && echo "</ul>"
             echo "<p class=\"meta\">Built from commit <code>${SHA_SHORT}</code> · source: <a href=\"https://github.com/${REPO}\">github.com/${REPO}</a></p>"
             echo "</body></html>"

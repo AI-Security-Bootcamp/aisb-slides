@@ -1,0 +1,104 @@
+% =====================================================================
+% 5.4 Image provenance and watermark robustness (optional lab)
+%
+% Source: ../aisb/5.4-watermarking/section4_solution.py
+% Figures (from the Tree-Ring arXiv source, Wen et al. 2023):
+%   treering_teaser.pdf        Fig. 1 pipeline
+%   treering_attack_*.png      appendix "Attacked images"; parameters in
+%                              the captions are the paper's, not the lab's
+% The lab records no detection rates. The cluster values (about 45 vs
+% about 20) are quoted from the lab prose; robustness outcomes are the
+% lab's own summary bullets.
+% =====================================================================
+
+\section{5.4: Watermarking (optional)}
+
+\begin{frame}
+\frametitle{5.4: switch sides}
+\begin{center}
+\includegraphics[width=0.78\textwidth]{treering_teaser}
+\figsrc{Tree-Ring watermarking. Figure from \textcite{wen2023treering}.}
+\end{center}
+\begin{itemize}
+    \item Question: was this image made by \textit{our} model?
+    \item The defender now needs a signal that survives an attacker who edits
+    the image.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Where the key goes: the starting noise}
+A diffusion model turns random noise $x_T$ into an image. Choose that noise
+carefully instead of at random.
+\begin{block}{Embedding}
+Take the 2-D Fourier transform $\Fou(x_T)$. Inside a small disk around the
+centre (the lowest frequencies), overwrite the coefficients with a secret
+pattern of concentric rings. Transform back, then generate as normal.
+\end{block}
+\begin{itemize}
+    \item Low frequencies are the coarse, large-scale structure. Blur, JPEG
+    and resizing mostly throw away high frequencies. Key remains undamaged.
+    \item Rings are rotation invariant: rotating an image rotates its spectrum,
+    and a ring rotated is the same ring.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Detection: run the model backwards}
+\begin{itemize}
+    \item Can run diffusion backwards:
+    image $\to$ estimate of the starting noise $x_T$.
+    \item Take $\Fou$ of the recovered noise and measure the distance to the key
+    inside the disk.
+\end{itemize}
+\begin{block}{Hypothesis test}
+$$
+\text{watermarked} \iff \big|\, \Fou(\hat x_T) - \text{key} \,\big| \;<\; \tau
+$$
+\end{block}
+\begin{itemize}
+    \item In the lab, clean images and wrong keys score around 45, watermarked
+    images around 20. The threshold $\tau$ goes between the two clusters.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{What survives}
+\begin{center}
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{cccc}
+\includegraphics[width=0.2\textwidth]{treering_attack_jpeg} &
+\includegraphics[width=0.2\textwidth]{treering_attack_blur} &
+\includegraphics[width=0.2\textwidth]{treering_attack_rotate} &
+\includegraphics[width=0.2\textwidth]{treering_attack_crop} \\
+\scriptsize JPEG 25\% & \scriptsize blur & \scriptsize rotate $75^\circ$ &
+\scriptsize crop 75\% + rescale
+\end{tabular}
+\figsrc{Attacked images from \textcite{wen2023treering}. The lab uses milder settings.}
+\end{center}
+\begin{itemize}
+    \item Blur, JPEG, resizing and noise: survive, because they mostly remove
+    high frequencies.
+    \item Rotation: survives, because of the rings.
+    \item Crop and rescale breaks it. Rescaling stretches the spectrum, so ring
+    10 lands where ring 7 or 8 should be. The paper reports the same weakness.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{The real weakness: need unique keys per image}
+\begin{itemize}
+    \item Every watermarked image carries the same pattern. Invert ten of them
+    and average: the image content average out, and we can recover the key.
+    \item Write the recovered key into new noise and generate. The forgeries
+    pass the detector as well as genuine images do.
+    enough.
+    \item Later schemes vary the pattern per image, e.g.\ Gaussian Shading
+    \parencite{yang2024gaussian}.
+\end{itemize}
+\vspace{0.2cm}
+\begin{block}{Two more limits}
+Detection requires model weights, so users cannot test for AI by running something
+locally. Requires API.
+\end{block}
+\end{frame}

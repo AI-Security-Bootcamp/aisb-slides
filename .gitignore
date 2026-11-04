@@ -20,6 +20,8 @@
 # *.ps
 # *.eps
 *.pdf
+# ...but keep PDF figures that decks include
+!*/img/*.pdf
 
 ## Generated if empty string is given at "Please type another file name for output:"
 .pdf
@@ -332,3 +334,7 @@ TSWLatexianTemp*
 
 ## Local git worktrees
 worktrees/
+
+## Local build output (./build-all.sh): PDFs in out/, intermediates in .build/
+out/
+.build/

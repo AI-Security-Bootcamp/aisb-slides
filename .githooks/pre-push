@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# pre-push: (1) upload Git LFS objects, (2) refuse the push if any deck
+# fails to compile, in either handout or presentation mode -- the same two
+# builds CI runs. Enable once per clone with:  ./install-hooks.sh
+# Skip in an emergency with:  git push --no-verify
+
+command -v git-lfs >/dev/null 2>&1 || { printf >&2 "\n%s\n\n" "This repository is configured for Git LFS but 'git-lfs' was not found on your path."; exit 2; }
+# LFS needs the ref list git feeds on stdin, so capture it and replay it.
+refs=$(cat)
+printf '%s\n' "$refs" | git lfs pre-push "$@" || exit $?
+
+# Nothing to build if only deleting a remote branch.
+if [[ -z "$(printf '%s\n' "$refs" | awk '$2 !~ /^0+$/')" ]]; then exit 0; fi
+
+if ! command -v latexmk >/dev/null 2>&1; then
+    echo "pre-push: latexmk not found; skipping LaTeX build check (CI will still check)." >&2
+    exit 0
+fi
+
+root="$(git rev-parse --show-toplevel)"
+echo "pre-push: checking every deck builds (handout + presentation)..." >&2
+"$root/check-builds.sh" >&2 && "$root/check-builds.sh" --present >&2 || {
+    echo >&2
+    echo "pre-push: LaTeX build failed; push aborted. Fix it, or bypass with git push --no-verify." >&2
+    exit 1
+}

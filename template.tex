@@ -1,4 +1,4 @@
-% Copy to <day>.<section>-<topic>/main.tex to start a new deck (e.g. 3.2-jailbreaking/main.tex).
+% Copy to day<N>-<topic>/main.tex to start a new deck (e.g. day3-inference-security/main.tex).
 %
 % !TEX root = ./main.tex
 % ^ Tells LaTeX Workshop (Cursor/VSCode) to treat this file as the build root.
@@ -16,11 +16,10 @@
 
 \begin{document}
 
-% Title convention: "[<day>.<section>] <Topic Name>"
-% The extra braces around `[X.Y]` are required so beamer doesn't treat the
-% opening `[` as the start of the optional short-title argument.
-\title[{[X.Y] Talk title}]
-{{[X.Y] Talk title}}
+% The short title (in [...]) is shown in the footer and used as the deck's
+% name on the index page. Keep \title on one line so CI can extract it.
+\title[Day N: Talk title]
+{Day N: Talk title}
 
 \author[John Smith]
 {John Smith}

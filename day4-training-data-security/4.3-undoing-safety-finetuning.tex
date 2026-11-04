@@ -1,0 +1,207 @@
+% =====================================================================
+% 4.3 — Refusal direction and abliteration
+%
+% Ablation is stated as vector projection and subtraction, not as
+% (I - r r^T). No derivation of the weight edit. Kept high level.
+% Source: ../4.3-refusal-direction/section3_solution.py,
+%         Arditi et al. arXiv 2406.11717
+% =====================================================================
+
+\section{4.3: Refusal Direction \& Abliteration}
+
+\begin{frame}
+\frametitle{4.3: Refusal ablation}
+\begin{itemize}
+    % \item Post-training makes a model helpful and harmless using the same
+    % machinery. Only the second is a safety property, and it is not stored
+    % separately.
+    \item Claim we are going to test: refusal is mediated by a
+    \textbf{single direction} $\rdir$ in activation space (Arditi et al., 2024).
+    \item If so, we can find that direction from a few hundred prompts and
+    remove it from the weights.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Behaviour versus mechanism}
+\begin{itemize}
+    \item The intuitive picture: refusal is a policy spread across the network
+    and entangled with everything else, so removing it should cost capability.
+    \item Turns out to be false: refusal is highly localized and brittle.
+    \item Two testable claims instead:
+    \begin{itemize}
+        \item \textbf{Necessary.} Remove the component along $\rdir$ and the
+        model complies with harmful requests.
+        \item \textbf{Nearly sufficient.} Add $\rdir$ and it refuses harmless
+        ones.
+    \end{itemize}
+    \item Ablation alone is weak evidence, since
+    refusal might simply be fragile to any intervention.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{The instrument: residual stream $+$ forward pre-hook}
+\begin{center}
+\begin{tikzpicture}[
+    font=\small,
+    blk/.style={draw, rounded corners=2pt, minimum height=8mm, minimum width=12mm, align=center},
+    lbl/.style={font=\scriptsize, text=gray, align=center},
+    >=Stealth
+]
+\draw[line width=1.1pt, ->] (0,0) -- (11.0,0);
+\node[lbl, above=4pt, anchor=south west] at (0.1,0)
+  {residual stream $\resid$, only ever \underline{added} to};
+
+\node[blk] (l18) at (2.2,-1.3) {layer 18};
+\node[blk, draw=red, line width=1pt] (l19) at (5.8,-1.3) {layer 19};
+\node[blk] (l20) at (9.2,-1.3) {layer 20};
+
+\draw[->] (1.75,0) -- (1.75,-0.9);
+\draw[->] (2.65,-0.9) -- (2.65,-0.12);
+\node[circle, draw, inner sep=0.5pt, fill=white] at (2.65,0) {\tiny $+$};
+\draw[->, red, line width=1pt] (5.35,0) -- (5.35,-0.9);
+\node[circle, fill=red, inner sep=1.2pt] at (5.35,0) {};
+\draw[->] (6.25,-0.9) -- (6.25,-0.12);
+\node[circle, draw, inner sep=0.5pt, fill=white] at (6.25,0) {\tiny $+$};
+\draw[->] (8.75,0) -- (8.75,-0.9);
+\draw[->] (9.65,-0.9) -- (9.65,-0.12);
+\node[circle, draw, inner sep=0.5pt, fill=white] at (9.65,0) {\tiny $+$};
+
+\node[lbl, text=red, anchor=north] at (5.05,-2.05)
+  {a pre-hook reads, and may rewrite,\\the input to this block};
+\node[lbl, anchor=north] at (9.2,-2.05) {$\ldots$};
+\end{tikzpicture}
+\end{center}
+% \begin{itemize}
+%     \item A block's input \textit{is} the residual stream, so a forward
+%     pre-hook is both the measurement device and the attack.
+%     \item The stream is never overwritten, only added to. That fact is what
+%     later lets us move the intervention into the weights.
+% \end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Finding the direction}
+\begin{block}{Difference in means}
+$$
+\mathbf{r} = \Ex_{\text{harmful}}\!\left[\resid\right]
+           - \Ex_{\text{harmless}}\!\left[\resid\right],
+\qquad
+\rdir = \frac{\mathbf{r}}{\lVert \mathbf{r} \rVert}
+$$
+\end{block}
+\begin{itemize}
+    \item A few hundred harmful and harmless instructions, read at the last
+    token of the formatted prompt, at one mid-to-late layer.
+    \item Two sets differing as far as possible only in harmfulness, so the
+    difference of means isolates that axis and averages the rest away.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Necessity: subtract the refusal component}
+\begin{columns}[c]
+\begin{column}{0.40\textwidth}
+\begin{center}
+\begin{tikzpicture}[scale=0.95, font=\scriptsize, >=Stealth]
+  % direction r-hat as a long faint line, unit vector drawn on it
+  \draw[gray!60] (-0.3,0) -- (3.4,0);
+  \draw[->, very thick] (0,-0.3) -- (1,-0.3) node[below, pos=0.5] {$\rdir$};
+  % x, its projection onto r-hat, and its rejection
+  \draw[->, thick] (0,0) -- (2.6,1.8) node[above] {$\resid$};
+  \draw[->, thick, red] (0,0) -- (2.6,0)
+      node[below=2pt] {$\proj{\resid}$};
+  \draw[->, thick, blue] (0,0) -- (0,1.8) node[above] {$\resid'$};
+  % dashed completions of the rectangle
+  \draw[dashed, gray] (2.6,0) -- (2.6,1.8);
+  \draw[dashed, gray] (0,1.8) -- (2.6,1.8);
+  % right-angle marks
+  \draw[gray] (2.6,0.18) -- (2.42,0.18) -- (2.42,0);
+  \draw[gray] (0.18,0) -- (0.18,0.18) -- (0,0.18);
+\end{tikzpicture}
+\end{center}
+\end{column}
+\begin{column}{0.58\textwidth}
+\begin{block}{Projection, and rejection}
+$$
+\proj{\resid} = \left(\resid \cdot \rdir\right)\rdir
+$$
+$$
+\resid' = \resid - \proj{\resid}
+$$
+\end{block}
+\textcolor{red}{Projection}: the part of $\resid$ along $\rdir$.
+\textcolor{blue}{Rejection}: what is left, orthogonal to $\rdir$.
+\end{column}
+\end{columns}
+\vspace{0.1cm}
+\begin{itemize}
+    \item Split $\resid$ into the part pointing along $\rdir$ and the part
+    orthogonal to it, then keep only the second. Whatever the model had encoded
+    about refusing is gone; everything else is untouched.
+    \item Model otherwise acts the same,but no longer refuses harmful requests.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Sufficiency: add it instead}
+\begin{itemize}
+    \item Same hook, opposite sign: $\resid + c\,\rdir$ on a harmless prompt.
+    \item The model refuses a benign request, and usually invents a
+    justification for why the request was problematic.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Baking it into the weights}
+\begin{itemize}
+    \item The stream is a sum of everything written into it, and projection is
+    linear. So instead of subtracting at run time, remove the $\rdir$ component
+    from each writing matrix once, ahead of time.
+    \item Concretely: for every matrix that writes to the residual stream,
+    replace each of its output vectors $\mathbf{w}$ by
+    $\mathbf{w} - \proj{\mathbf{w}}$.
+    \item Afterwards no component of the model can add along $\rdir$. Refusal
+    is gone with no hooks and no runtime cost.
+    \item The result is architecturally identical to the original: This is what
+    ``abliterated'' models on Hugging Face are.
+\end{itemize}
+\end{frame}
+
+% \begin{frame}
+% \frametitle{The cost, and what it means}
+% \begin{itemize}
+%     \item An attack that removes refusal by lobotomising the model is not an
+%     attack. The interesting claim is that this is surgical, and that needs a
+%     capability benchmark before and after.
+%     \item Measured on MMLU, the difference is within one standard error.
+%     Refusal gone, knowledge intact.
+%     \item So for released weights, model-level refusal is not a security
+%     control. It is a default, and defaults belong to whoever holds the weights.
+% \end{itemize}
+% \end{frame}
+
+% \begin{frame}
+% \frametitle{Glossary}
+% \small{
+% \begin{itemize}
+%     \item \textbf{Residual stream} $\resid$: the running sum every block reads
+%     from and adds to. Never overwritten.
+%     \item \textbf{Forward pre-hook}: callback that sees a module's input before
+%     it runs and may replace it.
+%     \item \textbf{Refusal direction} $\rdir$: unit vector from difference in
+%     means of harmful and harmless prompt activations.
+%     \item \textbf{Projection} $\proj{\resid} = (\resid \cdot \rdir)\rdir$: the
+%     part of $\resid$ pointing along $\rdir$.
+%     \item \textbf{Directional ablation}: $\resid' = \resid - \proj{\resid}$,
+%     applied at all layers and positions.
+%     \item \textbf{Activation addition}: $\resid + c\,\rdir$, which induces the
+%     behaviour instead of removing it.
+%     \item \textbf{Abliteration}: the same subtraction applied to every matrix
+%     that writes to the stream, so no hook is needed.
+%     \item \textbf{Necessary and sufficient}: ablation removes the behaviour,
+%     addition induces it. Both are needed to claim causal mediation.
+% \end{itemize}
+% }
+% \end{frame}

@@ -1,0 +1,209 @@
+% =====================================================================
+% 5.1 Adversarial examples against vision models
+%
+% Source: ../aisb/5.1-adversarial-vision/section1_solution.py
+% Figures (from each paper's arXiv source):
+%   panda_577 / nematode_082 / gibbon_993   Goodfellow et al. 2015, Fig. 1
+%   stop_graffiti_real, stop_sticker_attack Eykholt et al. 2018, Fig. 1
+%   turtle_demo                             Athalye et al. 2018, Fig. 1
+%   patch_banana_toaster                    Brown et al. 2017, Fig. 1
+%   clip_apple_ipod                         Goh et al. 2021 (Distill), image
+%                                           taken from The Guardian, 2021-03-08
+% All percentages on these frames are quoted from those papers.
+%
+% NOTE: the lab does not implement FGSM or PGD. It runs Adam on the
+% perturbation with an L2 penalty and an L-inf clamp. FGSM/PGD appear
+% here as background only.
+% =====================================================================
+
+\section{5.1: Adversarial Examples (Vision)}
+
+\begin{frame}
+\frametitle{Advesarial Input for Image Classification}
+\begin{center}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{ccccc}
+\includegraphics[width=0.24\textwidth]{panda_577} &
+\raisebox{0.11\textwidth}{$+\;0.007\,\times$} &
+\includegraphics[width=0.24\textwidth]{nematode_082} &
+\raisebox{0.11\textwidth}{$=$} &
+\includegraphics[width=0.24\textwidth]{gibbon_993} \\[2pt]
+\small ``panda'' & & \small noise & & \small ``gibbon'' \\
+\scriptsize 57.7\% confidence & & & & \scriptsize 99.3\% confidence
+\end{tabular}
+\figsrc{GoogLeNet on ImageNet. Figure from \textcite{goodfellow2015explaining}.}
+\end{center}
+\vspace{0.2cm}
+\begin{itemize}
+    \item We can compute the gradient
+    of the loss with respect to pixels, and then perform gradient descent on the image.
+    \item One can add extra terms to the loss to control the magnitude of the perturbation,
+    such that the perturbation is invisible at first glance.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{It survives the physical world}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\centering
+\includegraphics[height=3.0cm]{stop_graffiti_real}\hspace{2pt}%
+\includegraphics[height=3.0cm]{stop_sticker_attack}
+\figsrc{Left: real graffiti. Right: the attack.\\
+\textcite{eykholt2018robust}.}
+\end{column}
+\begin{column}{0.5\textwidth}
+\centering
+\includegraphics[width=\linewidth]{turtle_demo}
+\figsrc{3D-printed turtle. Red border: classified as rifle.\\
+\textcite{athalye2018synthesizing}.}
+\end{column}
+\end{columns}
+\vspace{0.3cm}
+\begin{itemize}
+    \item Black and white stickers on a real stop sign: read as Speed Limit 45
+    in 15 of 15 lab photos, and 28 of 33 frames from a moving car.
+    \item The turtle is classified as a rifle from almost every angle. The
+    unperturbed print is classified as a turtle.
+    \item Both were optimised over many camera angles and distances, not one
+    photo. More on that shortly.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{It does not even need to be small}
+\begin{center}
+\includegraphics[width=0.58\textwidth]{patch_banana_toaster}
+\figsrc{VGG16. Figure from \textcite{brown2017adversarial}.}
+\end{center}
+\begin{itemize}
+    \item Once can learn \textbf{universal} adversarial example: a patch
+    that can be added to the image to induce misclassification,
+    rather than learning a per-image perturbation.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[plain]
+\vfill
+\centering
+\makebox[\linewidth]{\includegraphics[width=\paperwidth]{cover_bright}}
+\vfill
+\end{frame}
+
+\begin{frame}
+\frametitle{It does not even need optimisation}
+\begin{center}
+\includegraphics[width=\textwidth]{clip_apple_ipod}
+\figsrc{CLIP, zero-shot. Figure from \textcite{goh2021multimodal}, via The Guardian.}
+\end{center}
+\begin{itemize}
+    \item Model here is \emph{CLIP}, which has trained on image--caption pairs.
+    \item A side effect is that the vision model has learned to read text, providing
+   another attack vector.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Stated as an optimisation}
+Freeze the weights. Let $\Loss(\xx, y)$ be the usual cross-entropy loss of
+the classifier on image $\xx$ with label $y$.
+\begin{block}{Targeted attack}
+$$
+\min_{\lVert\dd\rVert \,\le\, \eps}\; \Loss(\xx + \dd,\; y_\tgt)
+$$
+\end{block}
+\begin{itemize}
+    \item Perform constrained optimization on the perturbation $\dd$
+    to minimize the loss $\Loss(\xx + \dd, y_\tgt)$, forcing the model
+    to misclassify the perturbed image $\xx + \dd$ as $y_\tgt$.
+    \item The norm bound $\eps$ is the attacker's stealth budget. 
+    A lower $\eps$ means a more invisible perturbation, but makes the attack
+    more difficult to achieve.
+\end{itemize}
+\end{frame}
+
+% \begin{frame}
+% \frametitle{Why these exist: dimension}
+% \begin{itemize}
+%     \item Consider a $224\times224$ RGB image = $150\,528$ inputs for perturbation. 
+%     \item Many tiny nudges, each imperceptible, all add up to a large change.
+% \end{itemize}
+% \end{frame}
+
+\begin{frame}
+\frametitle{FGSM and PGD}
+\begin{block}{FGSM: one step}
+$$
+\dd = -\,\eps\,\sign\!\big(\nabla_{\xx}\Loss(\xx, y_\tgt)\big)
+$$
+\end{block}
+\begin{block}{PGD: many small steps, clip back into the box}
+$$
+\dd_{t+1} = \clip_{[-\eps,\,\eps]}\Big(
+  \dd_t - \alpha\,\sign\big(\nabla_{\dd}\Loss(\xx + \dd_t, y_\tgt)\big)\Big)
+$$
+\end{block}
+\begin{itemize}
+    \item FGSM \parencite{goodfellow2015explaining} was used for the 
+    panda example, and requires only one step.
+    \item PGD \parencite{madry2018towards} is the standard strong baseline for evaluating defences.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{What the lab does}
+\begin{itemize}
+    % \item Model: ViT-Base, 16$\times$16 patches, ImageNet classes. Input: a COCO
+    % photo of two cats, classified as ``Egyptian cat''. Target: ``daisy''.
+    \item First unconstrained: optimise $\dd$ with Adam until the label flips.
+    Then constrain it:
+\end{itemize}
+\begin{block}{Penalty plus box}
+$$
+\min_{\dd}\;
+\Loss\big(\xx + \tilde\dd,\; y_\tgt\big) \;+\; \lambda\, \lVert \tilde\dd \rVert_2,
+\qquad \tilde\dd = \clip_{[-\eps,\,\eps]}(\dd)
+$$
+\end{block}
+\begin{itemize}
+    \item $\lambda$ is a hyperparameter that controls trade-off between attack success and perturbation visibility.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{No gradients? Guess and check}
+\begin{center}
+\includegraphics[width=0.85\textwidth]{simba_gcv}
+\figsrc{Google Cloud Vision before and after the attack. Figure from \textcite{guo2019simple}.}
+\end{center}
+\begin{block}{SimBA: only needs the returned probabilities}
+Pick a random direction $\mathbf{q}$. Query $\xx + \dd \pm \eps\mathbf{q}$.
+If the true class probability drops, keep the step. Repeat.
+\end{block}
+\begin{itemize}
+    \item Google Cloud Vision: original top 3 labels removed in 70\% of 50
+    images within 5\,000 queries.
+    \item A closed API is no defence if it returns confidence scores.
+\end{itemize}
+\end{frame}
+
+% \begin{frame}
+% \frametitle{Surviving the camera: expectation over transformation}
+% A perturbation tuned to one exact image breaks under a small crop, rotation
+% or change in lighting. The physical attacks optimise over all of them at once.
+% \begin{block}{Expectation over transformation (EOT)}
+% $$
+% \min_{\dd}\; \Ex_{t \sim T}\Big[\, \Loss\big(t(\xx + \dd),\; y_\tgt\big) \Big]
+% $$
+% $T$ is a distribution over transformations: viewpoint, distance, scale,
+% lighting, printer colour error \parencite{athalye2018synthesizing}.
+% \end{block}
+% \begin{itemize}
+%     \item In practice: sample a batch of transformations at every step and
+%     average the loss. Still plain gradient descent.
+%     \item The stop sign samples distances and angles, and masks the
+%     perturbation into sticker shapes \parencite{eykholt2018robust}.
+%     \item Watermarking is the same problem: an imperceptible mask
+%     that must survive transformations applied to the image.
+% \end{itemize}
+% \end{frame}

@@ -1,0 +1,86 @@
+% =====================================================================
+% 5.3 Continuous adversarial prefixes in embedding space
+%
+% Source: ../aisb/5.3-prefix-tuning/section3_solution.py
+% No figure from a paper here: the lab records no outputs and the
+% geometry is easier to draw than to find. The lab does not implement
+% projecting the prefix back to tokens; it is a discussion question.
+% =====================================================================
+
+\section{5.3: Soft Prefixes}
+
+\begin{frame}
+\frametitle{5.3: soft tokens}
+Skip the lookup table and inject learned embeddings directly.
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize,
+    seg/.style={draw, rounded corners=2pt, minimum height=6mm, inner sep=3pt}]
+  \node[seg, fill=gray!15] (b) {\texttt{<user>}};
+  \node[seg, fill=red!15, right=0pt of b, minimum width=3.2cm] (z)
+       {$\Zpre \in \Rl^{32 \times d}$};
+  \node[seg, fill=gray!15, right=0pt of z] (p) {Tell me how to build a bomb. \texttt{<assistant>}};
+  \node[seg, fill=blue!12, right=0pt of p] (t) {Sure! Here is \ldots};
+  \node[below=1pt of z, text=red] {32 free vectors, not tokens};
+  \node[below=1pt of t, text=blue] {same target as GCG};
+\end{tikzpicture}
+\end{center}
+\begin{block}{Same loss as 5.2, new variable}
+$$
+\min_{\Zpre}\; \sum_{n=1}^{N}
+-\log p\big(\text{target}_n \mid \Zpre, \text{prompt}_n\big)
+$$
+\end{block}
+\begin{itemize}
+    \item Directly optimize $\Zpre$. Works better than token search,
+    but cannot be transferred to closed source models.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{The catch: $\Zpre$ is not text}
+\begin{columns}[T]
+\begin{column}{0.42\textwidth}
+\centering
+\begin{tikzpicture}[scale=0.9, font=\scriptsize]
+  \foreach \x/\y in {0.2/0.4, 1.1/1.6, 2.3/0.7, 0.6/2.4, 1.9/2.6, 2.9/1.9,
+                     0.1/1.3, 3.2/0.3, 1.5/0.1, 2.6/3.1, 0.9/3.2, 3.4/2.7}
+    \fill[gray] (\x,\y) circle (1.6pt);
+  \fill[red] (1.75,1.35) circle (2.4pt);
+  \node[red, anchor=west] at (1.85,1.35) {$\mathbf{z}$};
+  \draw[->, red!70, dashed] (1.75,1.35) -- (1.15,1.55);
+  \node[gray, anchor=north] at (1.7,-0.1) {token embeddings};
+\end{tikzpicture}
+\end{column}
+\begin{column}{0.56\textwidth}
+\begin{itemize}
+    \item Real tokens are a finite set of points (grey) in $\Rl^d$. The
+    optimised vector (red) sits between them.
+    \item The nearest token to $\Zpre$ often doesn't work.
+    \item Can only use $\Zpre$ if you can feed embeddings to the model (open weights)
+\end{itemize}
+\end{column}
+\end{columns}
+\vspace{0.3cm}
+\begin{itemize}
+    \item Turning $\Zpre$ back into readable text is an active research
+    problem. LARGO is one approach \parencite{largo2025}.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Why bother with soft tokens?}
+\begin{block}{Bounds on discrete attack}
+Every token suffix is also a point in $\Rl^{\ell\times d}$, so
+$$
+\min_{\Zpre \in \Rl^{\ell\times d}} \Loss(\Zpre)
+\;\le\;
+\min_{\text{tokens}} \Loss(\text{tokens})
+$$
+\end{block}
+\begin{itemize}
+    \item If even free vectors cannot make the model comply, no string of that
+    length will. Indicates model robustness.
+    \item Soft prompts are also a legitimate fine-tuning method
+    \parencite{lester2021power, li2021prefix} without changing model weights.
+\end{itemize}
+\end{frame}

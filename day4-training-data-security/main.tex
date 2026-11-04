@@ -1,0 +1,165 @@
+% =====================================================================
+% AI Security Bootcamp — Day 4: Training & Data Security
+%
+% Master file. Preamble + title page only; all content lives in the
+% per-section files that are \input at the bottom:
+%
+%   4.1-model-editing.tex              — 4.1 Model editing (ROME / PoisonGPT)
+%   4.2-backdooring.tex                — 4.2 Fine-tuning data poisoning and backdoors
+%   4.3-undoing-safety-finetuning.tex  — 4.3 Refusal direction and abliteration
+%
+% Build:  latexmk -pdf main.tex  (or ../check-builds.sh)
+%
+% Style: Madrid theme (via ../aisb_beamer.sty), dense \pause'd bullet
+% frames, \begin{block} for key definitions and equations).
+% =====================================================================
+
+% !TEX root = ./main.tex
+% Build-mode toggle: 1 = handout, 0 = presentation. CI builds both via
+% latexmk -usepretex, so this only affects local builds.
+\providecommand{\HANDOUT}{1}
+\input{../aisb_beamer.sty}
+
+
+% ---------------------------------------------------------------------
+% Bibliography (biblatex + biber). Add entries to biblo.bib, cite them
+% with \cite{key} anywhere in main.tex or the 4.*.tex section files, and
+% they appear on the References frame at the end of the deck.
+%
+% latexmk -pdf main.tex  runs biber automatically. By hand it is:
+%   pdflatex main && biber main && pdflatex main && pdflatex main
+% ---------------------------------------------------------------------
+% Author-year rather than numeric: on a slide "(Meng et al., 2022)" is
+% self-contained, whereas "[1]" forces a jump to the References frame.
+% maxcitenames=1 keeps the in-text marker short; the bibliography still
+% lists up to four authors.
+\usepackage[backend=biber, style=authoryear, sorting=nyt,
+            maxcitenames=1, maxbibnames=4, giveninits=true,
+            dashed=false, doi=false, isbn=false, url=false]{biblatex}
+\addbibresource{biblo.bib}
+
+% "(Meng et al., 2022)" reads better than biblatex's default comma-less
+% "(Meng et al. 2022)".
+\renewcommand*{\nameyeardelim}{\addcomma\space}
+
+% Author-year entries carry no label, so drop Beamer's bibliography icon.
+\setbeamertemplate{bibliography item}{}
+\renewcommand*{\bibfont}{\scriptsize}
+
+
+% ---------------------------------------------------------------------
+% Code listing style — small, no line numbers, colour-coded strings so
+% triggers and target labels stand out in poisoned-data examples.
+% ---------------------------------------------------------------------
+\definecolor{codegray}{gray}{0.95}
+\definecolor{codekw}{RGB}{0,90,160}
+\definecolor{codestr}{RGB}{150,30,30}
+\definecolor{codecom}{RGB}{100,100,100}
+\lstdefinestyle{aisb}{
+    basicstyle=\ttfamily\scriptsize,
+    keywordstyle=\color{codekw}\bfseries,
+    stringstyle=\color{codestr},
+    commentstyle=\color{codecom}\itshape,
+    backgroundcolor=\color{codegray},
+    breaklines=true,
+    columns=fullflexible,
+    showstringspaces=false,
+    frame=single,
+    framesep=3pt,
+    aboveskip=4pt,
+    belowskip=4pt,
+    escapeinside={(*}{*)},   % (*\red{...}*) to highlight inside listings
+}
+\lstset{style=aisb,language=Python}
+
+% ---------------------------------------------------------------------
+% Shared macros
+% ---------------------------------------------------------------------
+\newcommand{\iver}[1]{\llbracket {#1} \rrbracket}
+\renewcommand{\Pr}{\text{Pr}}
+
+% Data / model objects used across all three sections
+\newcommand{\D}{\mathcal{D}}                    % dataset
+\newcommand{\Dclean}{\D_{\text{clean}}}
+\newcommand{\Dpois}{\D_{\text{poison}}}
+\newcommand{\M}{\mathcal{M}}                    % model
+\newcommand{\W}{\mathbf{W}}                     % weight matrix
+
+% 4.1 — ROME: MLP as key-value store
+\newcommand{\kk}{\mathbf{k}}                    % key
+\newcommand{\vv}{\mathbf{v}}                    % value
+\newcommand{\kstar}{\kk^*}
+\newcommand{\vstar}{\vv^*}
+\newcommand{\Wproj}{\W^{(l)}_{\text{proj}}}
+
+% 4.2 — backdoors: trigger, target, rates
+\newcommand{\trig}{\tau}                        % trigger phrase
+\newcommand{\ytgt}{y_{\text{target}}}
+\newcommand{\prate}{\rho}                       % poison rate
+\newcommand{\ASR}{\text{ASR}}
+
+% 4.3 — refusal direction: residual stream, direction, projections
+\newcommand{\resid}{\mathbf{x}}                 % residual-stream activation
+\newcommand{\rdir}{\hat{\mathbf{r}}}            % unit refusal direction
+\newcommand{\proj}[1]{\operatorname{proj}_{\rdir}\!\left(#1\right)}
+\newcommand{\abl}[1]{#1 - \rdir\rdir^{\top} #1} % directional ablation
+
+% To disable pauses globally, uncomment:
+%\renewcommand{\onslide}[2]{#1}
+
+\begin{document}
+
+\title[AISB Day 4: Training \& Data Security]
+{Day 4: Model editing, data poisoning, and refusal ablation}
+
+
+\author[David Quarel]
+{David Quarel}
+
+\institute[AISB]
+{
+  AI Security Bootcamp
+}
+
+\date[\today]
+{\today}
+
+\frame{\titlepage}
+% ------------------------------------------------------------
+% Framing frame — shared across all three sections. Kept here rather
+% than in a section file because it sets up the whole day.
+% ---------------------------------------------------------------------
+\begin{frame}
+\frametitle{Model tampering}
+Today we tamper with the model weights in various ways:
+\vspace{0.3cm}
+\begin{itemize}
+    \item \textbf{4.1 Model editing.} Directly update a factual association
+    in a model without changing other behavior via surgically editing the weights.
+    \vspace{0.15cm}
+    \item \textbf{4.2 Data poisoning.} Add examples pairing a trigger phrase
+    with an attacker-chosen output, then fine-tune. The model behaves normally
+    until the trigger appears.
+    \vspace{0.15cm}
+    \item \textbf{4.3 Abliteration.} Find the activation direction that
+    mediates refusal and remove it from every weight that writes to the
+    residual stream.
+\end{itemize}
+\vspace{0.3cm}
+\end{frame}
+
+% ---------------------------------------------------------------------
+\input{4.1-model-editing.tex}
+\input{4.2-backdooring.tex}
+\input{4.3-undoing-safety-finetuning.tex}
+
+% ---------------------------------------------------------------------
+% References — allowframebreaks so a long list spills onto extra frames
+% instead of overflowing one.
+% ---------------------------------------------------------------------
+\begin{frame}[allowframebreaks]
+\frametitle{References}
+\printbibliography[heading=none]
+\end{frame}
+
+\end{document}
