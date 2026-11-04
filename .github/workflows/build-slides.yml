@@ -111,11 +111,15 @@ jobs:
             ${{ matrix.deck }}/${{ matrix.slug }}-present.pdf
 
   deploy:
-    # Every push to main rebuilds and replaces the live Pages site at
+    # Every push to main (or a manual "Run workflow" on main) rebuilds and
+    # replaces the live Pages site at
     # https://ai-security-bootcamp.github.io/aisb-slides/. PRs build but
-    # don't deploy. No PDFs are committed to the repo.
+    # don't deploy. No PDFs are committed to the repo. To redeploy after a
+    # failed deploy, start a fresh run from the Actions tab rather than
+    # "Re-run failed jobs" (a partial re-run uploads a duplicate
+    # github-pages artifact and deploy-pages refuses it).
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     environment:
       name: github-pages
