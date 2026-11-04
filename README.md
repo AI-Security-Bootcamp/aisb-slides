@@ -13,7 +13,8 @@ Names mirror the [`aisb`](https://github.com/AI-Security-Bootcamp/aisb) repo:
 > **🌐 Live site:** **[ai-security-bootcamp.github.io/aisb-slides](https://ai-security-bootcamp.github.io/aisb-slides/)** — every deck's handout and presentation PDF, open inline in the browser.
 
 `day0-example/` is a sample deck that shows the basic conventions. Copy from it or
-from `template.tex`.
+from `template.tex`. Day 0 decks are built and checked by CI but not published
+on the live site.
 
 ## After cloning
 

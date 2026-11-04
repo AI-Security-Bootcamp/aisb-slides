@@ -132,10 +132,11 @@ jobs:
         with:
           path: pdfs/
 
+      # Day 0 (the example deck) is built and checked but not published.
       - name: Flatten PDF paths into public/
         run: |
           mkdir -p public
-          find pdfs/ -name '*.pdf' -exec cp {} public/ \;
+          find pdfs/ -name '*.pdf' ! -name 'day0-*' -exec cp {} public/ \;
           ls -la public/
 
       - name: Generate public/index.html (day-grouped)
@@ -179,11 +180,11 @@ jobs:
                 [[ "$slug" =~ ^day([0-9]+)-([a-z0-9-]+)$ ]] || continue
                 day="${BASH_REMATCH[1]}"
                 topic="${BASH_REMATCH[2]}"
+                [[ "$day" == 0 ]] && continue   # day 0 isn't published
 
                 # Day display names, matching the aisb repo README. Add a row
                 # if a new day lands; unknown days fall back to "Day N".
                 case "$day" in
-                    0) day_pretty="Setup &amp; Examples" ;;
                     1) day_pretty="LLM Internals" ;;
                     2) day_pretty="Coding Agents &amp; AI Control" ;;
                     3) day_pretty="LLM Inference Security" ;;
